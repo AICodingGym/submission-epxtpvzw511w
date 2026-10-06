@@ -662,8 +662,12 @@ def create_reverse_many_to_one_manager(superclass, rel):
             queryset._add_hints(instance=self.instance)
             if self._db:
                 queryset = queryset.using(self._db)
-            queryset._defer_next_filter = True
-            queryset = queryset.filter(**self.core_filters)
+            if queryset.query.is_sliced:
+                queryset = queryset._chain()
+                queryset._filter_or_exclude_inplace(False, (), self.core_filters)
+            else:
+                queryset._defer_next_filter = True
+                queryset = queryset.filter(**self.core_filters)
             for field in self.field.foreign_related_fields:
                 val = getattr(self.instance, field.attname)
                 if val is None or (val == "" and empty_strings_as_null):
@@ -1028,8 +1032,14 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
             queryset._add_hints(instance=self.instance)
             if self._db:
                 queryset = queryset.using(self._db)
-            queryset._defer_next_filter = True
-            return queryset._next_is_sticky().filter(**self.core_filters)
+            if queryset.query.is_sliced:
+                queryset = queryset._next_is_sticky()
+                queryset = queryset._chain()
+                queryset._filter_or_exclude_inplace(False, (), self.core_filters)
+            else:
+                queryset._defer_next_filter = True
+                return queryset._next_is_sticky().filter(**self.core_filters)
+            return queryset
 
         def _remove_prefetched_objects(self):
             try:
@@ -1052,7 +1062,9 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
             queryset = queryset.using(queryset._db or self._db)
 
             query = {"%s__in" % self.query_field_name: instances}
-            queryset = queryset._next_is_sticky().filter(**query)
+            queryset = queryset._next_is_sticky()
+            queryset = queryset._chain()
+            queryset._filter_or_exclude_inplace(False, (), query)
 
             # M2M: need to annotate the query in order to get the primary model
             # that the secondary model was actually related to. We know that
@@ -1065,13 +1077,17 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
             join_table = fk.model._meta.db_table
             connection = connections[queryset.db]
             qn = connection.ops.quote_name
-            queryset = queryset.extra(
-                select={
-                    "_prefetch_related_val_%s"
-                    % f.attname: "%s.%s"
+            queryset.query.add_extra(
+                {
+                    "_prefetch_related_val_%s" % f.attname: "%s.%s"
                     % (qn(join_table), qn(f.column))
                     for f in fk.local_related_fields
-                }
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
             )
             return (
                 queryset,
