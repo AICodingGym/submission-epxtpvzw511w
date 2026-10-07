@@ -77,6 +77,7 @@ def _check_diff(cat_name, base_path):
               stdout=PIPE, stderr=PIPE, shell=True)
     output, errors = p.communicate()
     num_changes = int(output.strip())
+    x = "hi"
     print("%d changed/added messages in '%s' catalog." % (num_changes, cat_name))
 
 
