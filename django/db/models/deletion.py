@@ -232,6 +232,9 @@ class Collector:
         """
         Get a QuerySet of objects related to `objs` via the relation `related`.
         """
+        # Only the primary key and the relation field are needed for cascade
+        # deletion bookkeeping; fetching additional columns can trigger decode
+        # errors on malformed data and is unnecessary work.
         return related.related_model._base_manager.using(self.using).filter(
             **{"%s__in" % related.field.name: objs}
         ).only('pk', related.field.name)
